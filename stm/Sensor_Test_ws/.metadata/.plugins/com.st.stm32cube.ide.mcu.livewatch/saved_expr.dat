@@ -1,0 +1,9 @@
+send_word
+receive_word
+done_word
+brightness
+raw
+raw_moist
+raw_lux
+huart1->RxState
+auto_brightness_flag
