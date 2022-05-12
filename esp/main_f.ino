@@ -1,5 +1,12 @@
 /*********
-  Web Server Code adapted from: Rui Santos:
+  Libraries you'll need to download from github:
+  ESPAsyncWebServer
+  AsyncTCP
+
+  Libraries to add from boards manager:
+  Base64
+
+  Web Server Code adapted from Rui Santos:
     https://RandomNerdTutorials.com/esp32-websocket-server-arduino/
 *********/
 
@@ -21,7 +28,6 @@
 #define XCLK_GPIO_NUM      0
 #define SIOD_GPIO_NUM     26
 #define SIOC_GPIO_NUM     27
-
 #define Y9_GPIO_NUM       35
 #define Y8_GPIO_NUM       34
 #define Y7_GPIO_NUM       39
@@ -35,8 +41,8 @@
 #define PCLK_GPIO_NUM     22
 
 // network credentials
-const char* ssid = "The Diggs";
-const char* password = "6903Bmore";
+const char* ssid = "----";
+const char* password = "----";
 
 String GMST = String("GMST");
 String GLUX = String("GLUX");
@@ -58,13 +64,17 @@ int mstValue = 0;
 int luxValue = 0;
 // lightMode 0 = automatic, 1 = manual
 int lightMode = 0;
-
 int i = 0;
 
 // Create AsyncWebServer object on port 80
 AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
 
+/*
+ * This code sets up the web page for the server and also includes
+ * a series of buttons for sending websocket commands. This way you
+ * can connect to the webpage and test without the application.
+ */
 const char index_html[] PROGMEM = R"rawliteral(
 <!DOCTYPE HTML><html>
 <head>
@@ -248,12 +258,18 @@ const char index_html[] PROGMEM = R"rawliteral(
 </html>
 )rawliteral";
 
+/*
+ * This function responds to when a websocket client sends a message
+ * to the ESP32's server. This will process the message and perform
+ * the appopriate action.
+ */
 void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
   Serial.println("handling websocket message");
   AwsFrameInfo *info = (AwsFrameInfo*)arg;
   if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
     data[len] = 0;
     String data_string = String((char *) data);
+    // Get Moisture Sensor Value
     if (GMST == data_string) {
       // 0 param for GMessage indicates GMST
       int val = GetMessage(0);
@@ -262,6 +278,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       } else {
         ws.textAll(MST + String(val));
       }
+    // Get Ambient Light Sensor Value
     } else if (GLUX == data_string) {
       // 1 param for GMessage indicates GLUX
       int val = GetMessage(1);
@@ -270,7 +287,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       } else {
         ws.textAll(LUX + String(val));
       }
-    } else if (GLED.compareTo(data_string) == 0) {
+    // Get LED brightness value
+    } else if (GLED == data_string) {
       // 2 param for GMessage indicates GLED
       int val = GetMessage(2);
       if (val == -1) {
@@ -278,22 +296,26 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       } else {
         ws.textAll(LED + String(val));
       }
-    } else if (GLMD.compareTo(data_string) == 0) {
+    // Get current light mode
+    } else if (GLMD == data_string) {
       if (lightMode == 0) {
         ws.textAll(LMD + "MA");
       } else {
         ws.textAll(LMD + "MM");
       }
-    } else if (GIMG.compareTo(data_string) == 0) {
+    // capture an image
+    } else if (GIMG == data_string) {
       // get the photo and send it over websocket
       capturePhoto();
-    } else if (WPMP.compareTo(data_string) == 0) {
+    // Pump the water for 3 seconds
+    } else if (WPMP == data_string) {
       int success = PWater();
       if (success == -1) {
         // bad news for kyle
       } else {
         // good news for kyle
       }
+    // All set commands get routed here
     } else if (data_string.substring(0,1).equals(String("S"))) { 
       Serial.println("in set commands");
       if (SMessage(data_string) == 0) {
@@ -461,6 +483,10 @@ int receivedDone() {
   return -1;
 }
 
+/*
+ * This handles when a WebSocket event happens, and routes it to 
+ * the appropriate function.
+ */
 void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type,
              void *arg, uint8_t *data, size_t len) {
   switch (type) {
@@ -479,16 +505,26 @@ void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType 
   }
 }
 
+/*
+ * Sets up our WebSockets and handler
+ */
 void initWebSocket() {
   ws.onEvent(onEvent);
   server.addHandler(&ws);
 }
 
+/*
+ * Processor for the HTML, so a user could set up the 
+ * webpage to print out the values sent over WS
+ */
 String processor(const String& var){
   Serial.println(var);
   return String();
 }
 
+/*
+ * Sets up the WiFi, Web Server, Web Sockets, Camera
+ */
 void setup(){
   // Serial port for debugging purposes
   Serial.begin(115200);
@@ -552,6 +588,9 @@ void setup(){
   Serial2.begin(9600, SERIAL_8N1, RXD2, TXD2);
 }
 
+/*
+ * Continually cleanup the websocket clients
+ */
 void loop() {
   ws.cleanupClients();
   // delay(1);
